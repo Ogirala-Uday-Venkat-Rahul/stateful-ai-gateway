@@ -1,0 +1,22 @@
+# Secrets — never commit
+.env
+
+# Database — local only
+chat.db
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
