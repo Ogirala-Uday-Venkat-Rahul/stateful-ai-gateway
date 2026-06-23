@@ -1,17 +1,18 @@
-import sqlite3
+import psycopg2
 import sys
+import os
 
-DB_Name = "chat.db"
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def init_db():
     
-    conn = sqlite3.connect(DB_Name)
+    conn = psycopg2.connect(DATABASE_URL)
 
     cursor = conn.cursor()
 
     cursor.execute(""" 
         CREATE TABLE IF NOT EXISTS messages(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             session_id TEXT NOT NULL,
             role TEXT NOT NULL,
             content TEXT NOT NULL,
@@ -23,23 +24,23 @@ def init_db():
     conn.close()
 
 def save_message(session_id: str, role: str, content: str):
-    conn = sqlite3.connect(DB_Name)
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
 
     cursor.execute(""" 
         INSERT INTO messages (session_id, role, content)
-        VALUES(?,?,?);
+        VALUES(%s,%s,%s);
     """, (session_id, role, content))
     conn.commit()
     conn.close()
 
 def get_chat_history(session_id: str) -> list:
-    conn = sqlite3.connect(DB_Name)
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
 
     cursor.execute("""
         SELECT role, content FROM messages 
-        WHERE session_id = ?
+        WHERE session_id = %s
         ORDER BY created_at ASC;
     """, (session_id,))
 
