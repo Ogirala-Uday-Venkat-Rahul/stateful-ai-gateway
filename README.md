@@ -17,7 +17,7 @@ A production-grade AI chat backend built with FastAPI, featuring persistent conv
         |     [ Sliding-Window Rate Limiter ]
         |              |
         v              v
-[ SQLite (chat.db) ]  [ Groq Cloud API ]
+[ PostgreSQL (Koyeb) ] [ Groq Cloud API ]
   - Stores all             - llama-3.1-8b-instant
   - chat history           - OpenAI-compatible
   - by session ID          - >200 tokens/sec
@@ -27,11 +27,11 @@ A production-grade AI chat backend built with FastAPI, featuring persistent conv
 
 ## Features
 
-- **Stateful Conversations** — full chat history stored in SQLite and injected into every LLM call, giving the model persistent memory across turns
+- **Stateful Conversations** — full chat history stored in PostgreSQL and injected into every LLM call, giving the model persistent memory across turns
 - **Session Management** — each client gets a unique UUID session token; multiple users can chat independently without history collision
 - **Sliding-Window Rate Limiter** — in-memory IP-based limiter capped at 5 requests/minute; returns HTTP 429 on violation to protect backend resources
 - **Cloud Inference** — routes to Groq Cloud (`llama-3.1-8b-instant`) via OpenAI-compatible API; zero local GPU load
-- **SQL Injection Defense** — all database queries use parameterized `?` placeholders; no raw string interpolation
+- **SQL Injection Defense** — all database queries use parameterized `%s` placeholders; no raw string interpolation
 - **Streamlit Frontend** — live chat UI with session diagnostics sidebar and graceful 429 error handling
 
 ---
@@ -43,7 +43,7 @@ A production-grade AI chat backend built with FastAPI, featuring persistent conv
 | Backend API | FastAPI + Uvicorn (async) |
 | Frontend UI | Streamlit |
 | LLM Inference | Groq Cloud — `llama-3.1-8b-instant` |
-| Persistence | SQLite3 via Python `sqlite3` driver |
+| Persistence | PostgreSQL via `psycopg2-binary` |
 | HTTP Client | httpx (async-compatible) |
 | Validation | Pydantic v2 |
 | Config | python-dotenv |
@@ -56,7 +56,7 @@ A production-grade AI chat backend built with FastAPI, featuring persistent conv
 ai-chat-api/
 ├── main.py            # FastAPI backend — chat endpoint, rate limiter, Groq integration
 ├── app.py             # Streamlit frontend — chat UI, session management
-├── database.py        # SQLite data layer — init, save, and retrieve chat history
+├── database.py        # PostgreSQL data layer — init, save, and retrieve chat history
 ├── requirements.txt   # Python dependencies
 ├── .env               # API keys — never committed (see .gitignore)
 └── .gitignore
@@ -139,8 +139,8 @@ Accepts a message and session ID, returns the AI reply.
 **Why Groq over local Ollama?**
 Local GPU constraint (4GB VRAM) posed crash risk under sustained load. Groq Cloud offloads inference entirely, delivers >200 tokens/sec, and uses an OpenAI-compatible API so the integration pattern is industry-standard.
 
-**Why SQLite over Postgres?**
-Single-user portfolio scope — SQLite requires zero infrastructure, ships as a single file, and the Python `sqlite3` driver is built-in. The data layer is abstracted behind `database.py` so swapping to Postgres later requires changing one file.
+**Why PostgreSQL over SQLite?**
+SQLite uses the local filesystem, which is ephemeral on cloud platforms — data wipes on every restart. PostgreSQL runs as a managed service (Koyeb free tier), survives restarts, and is the industry standard for production deployments. The data layer is fully abstracted behind `database.py`, so the swap required changing only one file.
 
 **Why a sliding window over a fixed window rate limiter?**
 Fixed windows can be gamed — a client can send 5 requests at 11:59 and 5 more at 12:00, hitting 10 in under a second. A sliding window evaluates the true last-60-seconds window on every request, closing that gap.
