@@ -1,5 +1,7 @@
 # Stateful AI Chat Gateway
 
+**🔴 Live demo:** https://stateful-ai-gateway.streamlit.app
+
 A production-grade AI chat backend built with FastAPI, featuring persistent conversation memory, cloud LLM inference, and an in-memory rate limiting layer. Includes a Streamlit frontend for live demonstration.
 
 ---
@@ -17,7 +19,7 @@ A production-grade AI chat backend built with FastAPI, featuring persistent conv
         |     [ Sliding-Window Rate Limiter ]
         |              |
         v              v
-[ PostgreSQL (Koyeb) ] [ Groq Cloud API ]
+[ PostgreSQL (Neon) ]  [ Groq Cloud API ]
   - Stores all             - llama-3.1-8b-instant
   - chat history           - OpenAI-compatible
   - by session ID          - >200 tokens/sec
@@ -53,7 +55,7 @@ A production-grade AI chat backend built with FastAPI, featuring persistent conv
 ## Project Structure
 
 ```
-ai-chat-api/
+stateful-ai-gateway/
 ├── main.py            # FastAPI backend — chat endpoint, rate limiter, Groq integration
 ├── app.py             # Streamlit frontend — chat UI, session management
 ├── database.py        # PostgreSQL data layer — init, save, and retrieve chat history
@@ -68,8 +70,8 @@ ai-chat-api/
 
 **1. Clone the repo**
 ```bash
-git clone https://github.com/YOUR_USERNAME/ai-chat-api.git
-cd ai-chat-api
+git clone https://github.com/Ogirala-Uday-Venkat-Rahul/stateful-ai-gateway.git
+cd stateful-ai-gateway
 ```
 
 **2. Install dependencies**
@@ -140,7 +142,7 @@ Accepts a message and session ID, returns the AI reply.
 Local GPU constraint (4GB VRAM) posed crash risk under sustained load. Groq Cloud offloads inference entirely, delivers >200 tokens/sec, and uses an OpenAI-compatible API so the integration pattern is industry-standard.
 
 **Why PostgreSQL over SQLite?**
-SQLite uses the local filesystem, which is ephemeral on cloud platforms — data wipes on every restart. PostgreSQL runs as a managed service (Koyeb free tier), survives restarts, and is the industry standard for production deployments. The data layer is fully abstracted behind `database.py`, so the swap required changing only one file.
+SQLite uses the local filesystem, which is ephemeral on cloud platforms — data wipes on every restart. PostgreSQL runs as a managed service (Neon free tier), survives restarts, and is the industry standard for production deployments. The data layer is fully abstracted behind `database.py`, so the swap required changing only one file.
 
 **Why a sliding window over a fixed window rate limiter?**
 Fixed windows can be gamed — a client can send 5 requests at 11:59 and 5 more at 12:00, hitting 10 in under a second. A sliding window evaluates the true last-60-seconds window on every request, closing that gap.
