@@ -1,6 +1,8 @@
 # Secrets — never commit
 .env
 
+# Local-only files
+
 # Database — local only
 chat.db
 
