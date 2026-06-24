@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 import httpx
-import database  # Your SQLite data helper layer
+import database  # PostgreSQL (Neon) data helper layer
 
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
@@ -30,7 +30,11 @@ request_tracker = {}    # Memory structure -> Key: Client IP, Value: List of tim
 @app.post("/chat")
 async def chat(request_req: ChatRequest, fastapi_request: Request):
     # Step 1: Capture Client Fingerprint (IP Address)
-    client_ip = fastapi_request.client.host
+    forwarded_for = fastapi_request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+    else:
+        client_ip = fastapi_request.client.host
     now = time.time()
     
     if client_ip not in request_tracker:
@@ -49,7 +53,7 @@ async def chat(request_req: ChatRequest, fastapi_request: Request):
     # Accept Request: Log the current active timestamp
     request_tracker[client_ip].append(now)
 
-    # Step 2: Log Incoming Message to SQLite File 
+    # Step 2: Log Incoming Message to PostgreSQL
     database.save_message(request_req.session_id, "user", request_req.message)
     
     # Step 3: Extract Entire Chronological Message History for context
@@ -59,6 +63,7 @@ async def chat(request_req: ChatRequest, fastapi_request: Request):
     groq_payload = {
         "model": MODEL_NAME,
         "messages": chat_history,
+        "max_tokens": 512,
         "stream": False
     }
     

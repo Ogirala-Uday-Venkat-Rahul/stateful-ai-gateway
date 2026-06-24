@@ -1,7 +1,10 @@
 import psycopg2
 import sys
 import os
+from dotenv import load_dotenv
+from pathlib import Path
 
+load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 def init_db():

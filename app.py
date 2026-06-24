@@ -2,7 +2,10 @@ import streamlit as st
 import httpx
 import uuid
 
-BACKEND_URL = "http://127.0.0.1:8000/chat"
+try:
+    BACKEND_URL = st.secrets["BACKEND_URL"]
+except (KeyError, FileNotFoundError):
+    BACKEND_URL = "http://127.0.0.1:8000/chat"
 
 st.set_page_config(page_title="AI Gateway Platform", page_icon="🤖", layout="centered")
 st.title("🤖 Core AI Gateway Interface")
@@ -25,7 +28,7 @@ with st.sidebar:
     ### Infrastructure Specs:
     * **Frontend:** Streamlit 
     * **Backend API:** FastAPI (Uvicorn Async Loop)
-    * **Memory Layer:** SQLite3 (`chat.db`)
+    * **Memory Layer:** PostgreSQL (Neon, cloud-hosted)
     * **Inference Engine:** Groq Cloud (Llama 3.1)
     * **Defensive Boundary:** 5 req / min sliding window
     """)
