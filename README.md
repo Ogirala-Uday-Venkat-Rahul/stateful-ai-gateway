@@ -1,8 +1,8 @@
 # Stateful AI Chat Gateway
 
-**🔴 Live demo:** https://stateful-ai-gateway.streamlit.app
+Live demo: https://stateful-ai-gateway.streamlit.app
 
-A production-grade AI chat backend built with FastAPI, featuring persistent conversation memory, cloud LLM inference, and an in-memory rate limiting layer. Includes a Streamlit frontend for live demonstration.
+A FastAPI chat backend that remembers the conversation. It saves every message to PostgreSQL, sends the history back to the model on each request so the assistant has context, and rate-limits clients that hit it too hard. A small Streamlit frontend is included so you can try it without calling the API by hand.
 
 ---
 
@@ -29,12 +29,12 @@ A production-grade AI chat backend built with FastAPI, featuring persistent conv
 
 ## Features
 
-- **Stateful Conversations** — full chat history stored in PostgreSQL and injected into every LLM call, giving the model persistent memory across turns
-- **Session Management** — each client gets a unique UUID session token; multiple users can chat independently without history collision
-- **Sliding-Window Rate Limiter** — in-memory IP-based limiter capped at 5 requests/minute; returns HTTP 429 on violation to protect backend resources
-- **Cloud Inference** — routes to Groq Cloud (`llama-3.1-8b-instant`) via OpenAI-compatible API; zero local GPU load
-- **SQL Injection Defense** — all database queries use parameterized `%s` placeholders; no raw string interpolation
-- **Streamlit Frontend** — live chat UI with session diagnostics sidebar and graceful 429 error handling
+- **Conversation memory.** Each message is stored in PostgreSQL, and the full session history is sent with every model call, so the assistant can refer back to things you said earlier.
+- **Sessions.** Every client gets its own UUID session token, so multiple people can chat at the same time without their histories mixing.
+- **Rate limiting.** An in-memory, per-IP sliding window caps each client at 5 requests a minute and returns a 429 once they go over.
+- **Cloud inference.** Requests go to Groq's `llama-3.1-8b-instant` over its OpenAI-compatible API, so there's no local GPU to keep alive.
+- **Parameterized queries.** Every SQL statement uses `%s` placeholders instead of string formatting, which keeps user input out of the query itself.
+- **Streamlit frontend.** A simple chat UI with a session-info sidebar that handles the 429 case without breaking.
 
 ---
 
@@ -42,11 +42,11 @@ A production-grade AI chat backend built with FastAPI, featuring persistent conv
 
 | Layer | Technology |
 |---|---|
-| Backend API | FastAPI + Uvicorn (async) |
+| Backend API | FastAPI + Uvicorn |
 | Frontend UI | Streamlit |
-| LLM Inference | Groq Cloud — `llama-3.1-8b-instant` |
+| LLM Inference | Groq Cloud (`llama-3.1-8b-instant`) |
 | Persistence | PostgreSQL via `psycopg2-binary` |
-| HTTP Client | httpx (async-compatible) |
+| HTTP Client | httpx |
 | Validation | Pydantic v2 |
 | Config | python-dotenv |
 
@@ -56,11 +56,11 @@ A production-grade AI chat backend built with FastAPI, featuring persistent conv
 
 ```
 stateful-ai-gateway/
-├── main.py            # FastAPI backend — chat endpoint, rate limiter, Groq integration
-├── app.py             # Streamlit frontend — chat UI, session management
-├── database.py        # PostgreSQL data layer — init, save, and retrieve chat history
+├── main.py            # FastAPI backend: chat endpoint, rate limiter, Groq call
+├── app.py             # Streamlit frontend: chat UI, session handling
+├── database.py        # PostgreSQL layer: init, save, and read chat history
 ├── requirements.txt   # Python dependencies
-├── .env               # API keys — never committed (see .gitignore)
+├── .env               # API keys, never committed (see .gitignore)
 └── .gitignore
 ```
 
@@ -85,7 +85,7 @@ Create a `.env` file in the project root:
 ```
 GROQ_API_KEY=your_key_here
 ```
-Get a free key at [console.groq.com](https://console.groq.com)
+You can get a free key at [console.groq.com](https://console.groq.com).
 
 **4. Initialize the database**
 ```bash
@@ -97,12 +97,12 @@ python database.py init
 uvicorn main:app --reload
 ```
 
-**6. Start the Streamlit frontend** (new terminal)
+**6. Start the Streamlit frontend** (in a second terminal)
 ```bash
 streamlit run app.py
 ```
 
-Frontend runs at `http://localhost:8501` — backend API docs at `http://localhost:8000/docs`
+The frontend runs at `http://localhost:8501`, and the backend API docs are at `http://localhost:8000/docs`.
 
 ---
 
@@ -110,7 +110,7 @@ Frontend runs at `http://localhost:8501` — backend API docs at `http://localho
 
 ### `POST /chat`
 
-Accepts a message and session ID, returns the AI reply.
+Takes a message and a session ID, returns the assistant's reply.
 
 **Request body:**
 ```json
@@ -138,11 +138,11 @@ Accepts a message and session ID, returns the AI reply.
 
 ## Key Design Decisions
 
-**Why Groq over local Ollama?**
-Local GPU constraint (4GB VRAM) posed crash risk under sustained load. Groq Cloud offloads inference entirely, delivers >200 tokens/sec, and uses an OpenAI-compatible API so the integration pattern is industry-standard.
+**Why Groq instead of running a model locally?**
+My machine has a 4GB GPU, which isn't enough to run a model under steady load without crashing. Groq handles the inference instead, returns tokens quickly, and its API follows the OpenAI format, so the client code stays simple.
 
-**Why PostgreSQL over SQLite?**
-SQLite uses the local filesystem, which is ephemeral on cloud platforms — data wipes on every restart. PostgreSQL runs as a managed service (Neon free tier), survives restarts, and is the industry standard for production deployments. The data layer is fully abstracted behind `database.py`, so the swap required changing only one file.
+**Why PostgreSQL instead of SQLite?**
+SQLite writes to a local file, and on most cloud hosts that file is wiped on every restart, so the chat history wouldn't survive a redeploy. Postgres runs as a managed service (I used Neon's free tier) and keeps the data between restarts. All the database code lives in `database.py`, so moving from SQLite to Postgres only changed that one file.
 
-**Why a sliding window over a fixed window rate limiter?**
-Fixed windows can be gamed — a client can send 5 requests at 11:59 and 5 more at 12:00, hitting 10 in under a second. A sliding window evaluates the true last-60-seconds window on every request, closing that gap.
+**Why a sliding window for rate limiting?**
+A fixed window resets on a clock boundary, so a client can send 5 requests just before the reset and 5 more right after and slip 10 through in a second. A sliding window checks the actual last 60 seconds on every request, which closes that gap.
