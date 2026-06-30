@@ -64,9 +64,9 @@ if __name__ == "__main__":
         command = sys.argv[1].lower()
         if command == "init":
             init_db()
-            print("Database initialized successfully!")
+            print("Database initialized.")
         else:
-            print(f" Unknown command: '{command}'")
+            print(f"Unknown command: '{command}'")
     else:
         init_db()
-        print("ℹ Defaulting to safe initialization...")
+        print("No command given, running init by default.")

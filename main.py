@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 import httpx
-import database  # PostgreSQL (Neon) data helper layer
+import database  # PostgreSQL (Neon) data layer
 
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
@@ -15,79 +15,79 @@ class ChatRequest(BaseModel):
     session_id: str
     message: str
 
-# Groq Cloud Configuration (OpenAI Compatible Architecture)
+# Groq (OpenAI-compatible API)
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 if not GROQ_API_KEY:
-    raise RuntimeError("CRITICAL ENVIRONMENT ERROR: GROQ_API_KEY is missing from system memory!")
-MODEL_NAME = "llama-3.1-8b-instant"  # Supercharged, hyper-fast cloud open model
+    raise RuntimeError("GROQ_API_KEY is not set in the environment")
+MODEL_NAME = "llama-3.1-8b-instant"
 
-# 🛡️ SLIDING-WINDOW RATE LIMIT CONFIGURATION
-RATE_LIMIT_WINDOW = 60  # Timeframe in seconds (1 minute)
-MAX_REQUESTS = 5        # Allowed hits per client per window
-request_tracker = {}    # Memory structure -> Key: Client IP, Value: List of timestamps
+# Sliding-window rate limit: at most MAX_REQUESTS per client per RATE_LIMIT_WINDOW seconds.
+RATE_LIMIT_WINDOW = 60  # seconds
+MAX_REQUESTS = 5
+request_tracker = {}    # in-memory: client IP -> list of recent request timestamps
 
 @app.post("/chat")
 async def chat(request_req: ChatRequest, fastapi_request: Request):
-    # Step 1: Capture Client Fingerprint (IP Address)
+    # Identify the client by IP. Behind a proxy the real client is the first entry
+    # of the X-Forwarded-For chain; otherwise use the direct connection IP.
     forwarded_for = fastapi_request.headers.get("x-forwarded-for")
     if forwarded_for:
         client_ip = forwarded_for.split(",")[0].strip()
     else:
         client_ip = fastapi_request.client.host
     now = time.time()
-    
+
     if client_ip not in request_tracker:
         request_tracker[client_ip] = []
-        
-    # Sliding Window Clean-up: Evict timestamps older than 60 seconds
+
+    # Drop timestamps older than the window so we only count recent requests.
     request_tracker[client_ip] = [t for t in request_tracker[client_ip] if now - t < RATE_LIMIT_WINDOW]
-    
-    # Core Resource Defense Evaluation
+
+    # Reject if the client has already used its allowance in the current window.
     if len(request_tracker[client_ip]) >= MAX_REQUESTS:
         raise HTTPException(
             status_code=429,
             detail=f"Rate limit exceeded. Maximum {MAX_REQUESTS} requests per minute allowed."
         )
-        
-    # Accept Request: Log the current active timestamp
+
+    # Otherwise record this request's timestamp.
     request_tracker[client_ip].append(now)
 
-    # Step 2: Log Incoming Message to PostgreSQL
+    # Save the incoming message.
     database.save_message(request_req.session_id, "user", request_req.message)
-    
-    # Step 3: Extract Entire Chronological Message History for context
+
+    # Load the full session history to send back as context.
     chat_history = database.get_chat_history(request_req.session_id)
-    
-    # Step 4: Construct Standard Chat Completion Payload
+
+    # Build the chat-completion request.
     groq_payload = {
         "model": MODEL_NAME,
         "messages": chat_history,
         "max_tokens": 512,
         "stream": False
     }
-    
+
     headers = {
         "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json"
     }
-    
-    # Step 5: Perform Network Connection to the Cloud Pipeline
+
+    # Call Groq.
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(GROQ_API_URL, json
-            =groq_payload, headers=headers, timeout=30.0)
+            response = await client.post(GROQ_API_URL, json=groq_payload, headers=headers, timeout=30.0)
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
-            raise HTTPException(status_code=e.response.status_code, detail=f"Cloud Engine Error: {e.response.text}")
+            raise HTTPException(status_code=e.response.status_code, detail=f"Groq API error: {e.response.text}")
         except httpx.RequestError:
-            raise HTTPException(status_code=502, detail="Cloud Infrastructure Gateway unreachable.")
+            raise HTTPException(status_code=502, detail="Could not reach the Groq API.")
 
-    # Step 6: Parse the Token Content from standard JSON structure
+    # Extract the reply text from the standard response shape.
     response_data = response.json()
     ai_reply = response_data["choices"][0]["message"]["content"]
-    
-    # Step 7: Commit AI Reply to persistent database
+
+    # Save the assistant's reply.
     database.save_message(request_req.session_id, "assistant", ai_reply)
-    
+
     return {"reply": ai_reply}
